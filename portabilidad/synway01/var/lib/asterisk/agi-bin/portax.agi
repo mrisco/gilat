@@ -1,0 +1,102 @@
+#!/usr/bin/perl
+use Asterisk::AGI;
+use DBI;
+
+$AGI = new Asterisk::AGI;
+$|=1;
+
+my %input = $AGI->ReadParse();
+my $extension = $input{extension};
+print "Extension: $extension\n";
+my $callerid = $input{callerid};
+print "Caller ID: $callerid\n";
+
+my $tests = 0;
+my $pass = 0;
+my $fail = 0;
+
+$dsn = 'DBI:mysql:portabilidad:localhost';
+$db_user_name = 'root';
+$db_password = 'p0rt42014';
+
+my $dbh = DBI->connect("DBI:mysql:portabilidad:localhost", "root", "p0rt42014") or die print $DBI::errstr;
+$dbh->{RaiseError} = 1;
+
+my $header, $prefijo, $nrn, $origen, $numero_portado,$new_extension;
+
+#Diferenciar portabilidad a fijos o moviles
+$header_3 = substr $extension, 0, 3;
+$header_1 = substr $extension, 0, 1;
+print "HEADER_3: $header_3\n";
+print "HEADER_1: $header_1\n";
+
+if ($header_3 eq "035")
+{
+  $new_extension = substr $extension, 3, 9;
+  #$prefijo = substr $extension, 3, 5;
+  print "HEADER: 035\n";
+}
+else
+{
+  if ($header_3 eq "247")
+  {
+     #HEADER: 24701
+     $new_extension = substr $extension, 5, 9;
+     #$prefijo = substr $extension, 5, 5;
+     print "HEADER: 247\n";
+  }
+  else
+  {
+     if ($header_1 eq "1")
+     {
+        $new_extension = $extension;
+        print "Test LNP HEADER: 0(AC)(NUMBER)\n";
+     }
+     else
+     {
+        $new_extension = substr $extension, 1, 8;
+        #$prefijo = substr $extension, 0, 5;
+        print "Test LNP HEADER: 0(AC)(NUMBER)\n";
+     }
+  }
+}
+
+print "New Extension: $new_extension\n";
+
+$origen = "35";
+
+my $sql_portados = "SELECT nrn_receptor from abdcp_numeros_portados where phone_number = '$new_extension'";
+#my $sql_portados = "SELECT nrn_donante from abdcp_numeros_portados where phone_number = '$new_extension'";
+print "SQL portados: $sql_portados\n";
+my $sth_portados = $dbh->prepare($sql_portados);
+$sth_portados->execute();
+my $row_portado = $sth_portados->fetchrow_hashref;
+
+if ($row_portado)
+{
+   print "NUMERO PORTADO\n";
+   $nrn = $row_portado->{nrn_receptor};
+}
+else
+{
+   print "NUMERO NO PORTADO\n";
+   #my $sql_plan = "SELECT nrn from plan_numeracion where prefijo = '$prefijo'";
+   my $sql_plan = "SELECT nrn from plan_numeracion where '$new_extension' LIKE CONCAT(prefijo, '%') ORDER BY LENGTH(prefijo) DESC LIMIT 1";
+   print "SQL plan_numeracion: $sql_plan\n";
+   my $result_plan = $dbh->selectall_arrayref($sql_plan);
+   foreach $row_plan (@{ $result_plan })
+   {
+      @result_plan = @{ $row_plan };
+      $nrn = $result_plan[0];
+      last;
+   }
+}
+
+my $redir = 1;
+$numero_portado = $nrn."35".$new_extension;
+###$numero_portado = "20"."35"."983434724";
+
+$AGI->set_variable("_SS7_REDIRECTING_NUMBER", $numero_portado);
+$AGI->set_variable("SS7_RDNI", $numero_portado);
+$AGI->set_variable("SS7_REDIR", $redir);
+
