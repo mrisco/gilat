@@ -33,7 +33,7 @@ sub procesar_seq {
 		$date_now = DateTime->now(time_zone=>'America/Lima')->strftime('%m/%d/%Y %H:%M:%S');
 		print "INFO $date_now - Descargando el archivo secuencial via sftp: $proc_seq ...\n";
 	
-		my $remote = '/dailyfiles/'.substr($proc_seq, 0, 6).'/NumeracionesPortadas_'.$proc_seq.'.gz';
+		my $remote = '/app/diarios/'.substr($proc_seq, 0, 6).'/NumeracionesPortadas_'.$proc_seq.'.gz';
 		my $local = $input_path.'/NumeracionesPortadas_'.$proc_seq.'.gz';
 		#print "remote: $remote - local: $local\n";
 		
@@ -44,7 +44,7 @@ sub procesar_seq {
 		my $cmd = 'gunzip '.$local;
 		`$cmd`;
 	}
-	
+
 	if (-e $file_input) {
 		## Procesamos el archivo
 		open(INPUT, $file_input) or die "No se puede abrir el archivo '$file_input' $!";
@@ -86,7 +86,7 @@ sub procesar_seq {
 		`$cmd`;
 		$cmd = 'rm -f '.$file_temp;
 		`$cmd`;
-		
+	
 		$cmd = "wc -l ".$file_diff." | cut -d ' ' -f 1";
 		my $nro_numeros = `$cmd`;
 		$nro_numeros =~ s/\n//;
@@ -148,12 +148,16 @@ sub get_list_process_seq {
 	my ($st, @dates);
 	
 	my $dt_ant = DateTime->new(year=>$year, month=>$month, day=>$day, time_zone=>'America/Lima');
+	my $dt_ago = DateTime->now(time_zone=>'America/Lima')->subtract(days => 2);
 	my $dt_now = DateTime->now(time_zone=>'America/Lima');
 
 	$dt_ant = $dt_ant->add(days => 1);
 	while ($dt_ant <= $dt_now) {
 		$st = $dt_ant->strftime('%Y%m%d');
-		push(@dates, $st);
+		if ($dt_ago <= $dt_ant) {
+			# Solo se agregan al vector @dates las secuencias (dt_ant) entre la fecha actual (dt_now) y la fecha anterior a 2 dias (dt_ago)
+			push(@dates, $st);
+		}
 		$dt_ant = $dt_ant->add(days => 1);
 	}
 	
@@ -189,7 +193,7 @@ sub enviar_mail {
     close EMAIL_FULL_FILE;
    
     # Sending email
-    $mail_sender->MailMsg({ to => "$mail_inbox", subject => "$mail_type - Proceso Portabilidad", msg  => $mail_body });
+    #$mail_sender->MailMsg({ to => "$mail_inbox", subject => "$mail_type - Proceso Portabilidad", msg  => $mail_body });
      
     # Logging email
     $date_now = DateTime->now(time_zone=>'America/Lima')->strftime('%m/%d/%Y %H:%M:%S');
@@ -211,10 +215,6 @@ $mail_tmpl = $home.'/etc/mail_numera_portax.tmpl';
 # Remove Mail::Sender logo feces from mail header
 $Mail::Sender::NO_X_MAILER = 1;
 $mail_sender = new Mail::Sender { smtp => '172.20.201.201', from => 'Portabilidad <rccopa@gilatla.com>' };
-
-# Cantidad de dias desde la fecha actual
-$ndays = 10;
-$days_ago = time() - $ndays * 86400;
 
 ##
 ## Leyendo archivo de configuracion
